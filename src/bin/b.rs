@@ -2,9 +2,9 @@
 #![no_main]
 
 #[cfg(feature = "defmt")]
-use defmt::*;
+use {defmt_rtt as _, panic_reset as _};
 #[cfg(feature = "defmt")]
-use defmt_rtt::*;
+use defmt::*;
 use embassy_executor::Spawner;
 use embassy_stm32::gpio::{Level, Output, Speed};
 use embassy_stm32::Peri;
@@ -28,7 +28,6 @@ use core::cell::RefCell;
 use static_cell::StaticCell;
 use heapless::Vec;
 use embassy_stm32::mode::Async;
-use panic_reset as _;
 
 #[embassy_executor::task]
 async fn net_task(
@@ -46,25 +45,25 @@ async fn blinky(pin: Peri<'static, AnyPin>) {
     loop {
         led.set_high();
         Timer::after_millis(1000).await;
-        #[cfg(feature = "defmt")]
         info!("led hight");
 
         led.set_low();
         Timer::after_millis(1000).await;
-        #[cfg(feature = "defmt")]
         info!("led low");
     }
 }
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
     let p = embassy_stm32::init(Default::default());
+    #[cfg(feature = "defmt")]
+    info!("b.bin started");
     let flash = Flash::new_blocking(p.FLASH);
     let flash = Mutex::new(RefCell::new(flash));
     let config = FirmwareUpdaterConfig::from_linkerfile_blocking(&flash, &flash);
     let mut magic = AlignedBuffer([0; WRITE_SIZE]);
     let mut firmware_state = BlockingFirmwareState::from_config(config, &mut magic.0);
     spawner.spawn(blinky(p.PC13.into()).unwrap());
-
+/*
     let mut spi_config = Config::default();
     spi_config.frequency = Hertz(20_000_000);
     let cs = Output::new(p.PD7, Level::High, Speed::VeryHigh);
@@ -84,9 +83,58 @@ async fn main(spawner: Spawner) {
     let (stack, runner) = embassy_net::new(device, config, RESOURCES.init(StackResources::new()), seed);
 
     spawner.spawn(net_task(runner).unwrap());
-
+*/
     let mut button = ExtiInput::new(p.PE13, p.EXTI13, Pull::Up);
     firmware_state.mark_booted().expect("Failed to mark booted");
+    #[cfg(feature = "defmt")]
+    info!("Mark booted");
+/*    let mut rx_buffer = [0; 4096];
+    let mut tx_buffer = [0; 4096];
+    let mut buf = [0; 4096];
+
+    loop {
+        let mut socket = TcpSocket::new(stack, &mut rx_buffer, &mut tx_buffer);
+        socket.set_timeout(Some(embassy_time::Duration::from_secs(10)));
+
+        #[cfg(feature = "defmt")]
+        info!("Listening on TCP:1234...");
+        if let Err(e) = socket.accept(1234).await {
+            #[cfg(feature = "defmt")]
+            warn!("accept error: {:?}", e);
+            continue;
+        }
+
+        #[cfg(feature = "defmt")]
+        info!("Received connection from {:?}", socket.remote_endpoint());
+
+        loop {
+            let n = match socket.read(&mut buf).await {
+                Ok(0) => {
+                    #[cfg(feature = "defmt")]
+                    warn!("read EOF");
+                    break;
+                }
+                Ok(n) => n,
+                Err(e) => {
+                    #[cfg(feature = "defmt")]
+                    warn!("read error: {:?}", e);
+                    break;
+                }
+            };
+
+            #[cfg(feature = "defmt")]
+            info!("rxd {:02x}", &buf[..n]);
+
+            match socket.write_all(&buf[..n]).await {
+                Ok(()) => {}
+                Err(e) => {
+                    #[cfg(feature = "defmt")]
+                    warn!("write error: {:?}", e);
+                    break;
+                }
+            };
+        }
+    }*/
     loop {
         button.wait_for_falling_edge().await;
         firmware_state.mark_dfu().expect("Failed to mark dfu");

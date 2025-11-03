@@ -31,6 +31,8 @@ defmt = [
       "dep:defmt",
       "dep:defmt-rtt",
       "embassy-stm32/defmt",
+      "embassy-time/defmt",
+      "embassy-time/defmt-timestamp-uptime",
       "embassy-boot-stm32/defmt",
       "embassy-time/defmt-timestamp-uptime",
       "embassy-sync/defmt",
