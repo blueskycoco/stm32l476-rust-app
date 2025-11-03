@@ -44,17 +44,37 @@ async fn blinky(pin: Peri<'static, AnyPin>) {
 
     loop {
         led.set_high();
-        Timer::after_millis(1000).await;
-        info!("led hight");
+        Timer::after_millis(200).await;
+        //info!("led high");
 
         led.set_low();
         Timer::after_millis(1000).await;
-        info!("led low");
+        //info!("led low");
     }
 }
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
-    let p = embassy_stm32::init(Default::default());
+    let mut config = embassy_stm32::Config::default();
+    {
+        use embassy_stm32::rcc::*;
+        // 80Mhz clock (Source: 8 / SrcDiv: 1 * PllMul 20 / ClkDiv 2)
+        // 80MHz highest frequency for flash 0 wait.
+        config.rcc.sys = Sysclk::PLL1_R;
+        config.rcc.hse = Some(Hse {
+            freq: Hertz::mhz(8),
+            mode: HseMode::Oscillator,
+        });
+        config.rcc.pll = Some(Pll {
+            source: PllSource::HSE,
+            prediv: PllPreDiv::DIV1,
+            mul: PllMul::MUL48,
+            divp: None,
+            divq: Some(PllQDiv::DIV8),
+            divr: Some(PllRDiv::DIV6), // sysclk 80Mhz clock (8 / 1 * 20 / 2)
+        });
+        config.rcc.mux.clk48sel = mux::Clk48sel::PLL1_Q;
+    }
+    let p = embassy_stm32::init(config);
     #[cfg(feature = "defmt")]
     info!("b.bin started");
     let flash = Flash::new_blocking(p.FLASH);
@@ -63,9 +83,9 @@ async fn main(spawner: Spawner) {
     let mut magic = AlignedBuffer([0; WRITE_SIZE]);
     let mut firmware_state = BlockingFirmwareState::from_config(config, &mut magic.0);
     spawner.spawn(blinky(p.PC13.into()).unwrap());
-/*
+
     let mut spi_config = Config::default();
-    spi_config.frequency = Hertz(20_000_000);
+    spi_config.frequency = Hertz(16_000_000);
     let cs = Output::new(p.PD7, Level::High, Speed::VeryHigh);
     let rst = Output::new(p.PD6, Level::High, Speed::VeryHigh);
     let spi = Spi::new(p.SPI1, p.PB3, p.PB5, p.PB4, p.DMA1_CH3, p.DMA1_CH2, spi_config);
@@ -83,12 +103,12 @@ async fn main(spawner: Spawner) {
     let (stack, runner) = embassy_net::new(device, config, RESOURCES.init(StackResources::new()), seed);
 
     spawner.spawn(net_task(runner).unwrap());
-*/
+
     let mut button = ExtiInput::new(p.PE13, p.EXTI13, Pull::Up);
     firmware_state.mark_booted().expect("Failed to mark booted");
     #[cfg(feature = "defmt")]
     info!("Mark booted");
-/*    let mut rx_buffer = [0; 4096];
+    let mut rx_buffer = [0; 4096];
     let mut tx_buffer = [0; 4096];
     let mut buf = [0; 4096];
 
@@ -134,9 +154,10 @@ async fn main(spawner: Spawner) {
                 }
             };
         }
-    }*/
-    loop {
+    }
+/*    loop {
         button.wait_for_falling_edge().await;
         firmware_state.mark_dfu().expect("Failed to mark dfu");
-    }
+    }*/
 }
+
